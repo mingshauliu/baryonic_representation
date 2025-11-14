@@ -6,7 +6,7 @@
 #SBATCH --constraint=a100-80gb 
 #SBATCH --cpus-per-task=8        # 8 CPU cores (for data loading, etc.)
 #SBATCH --mem=480G               # Total memory available to the job
-#SBATCH -t 1-08:00               # Max runtime (24 hours)
+#SBATCH -t 3-00:00               # Max runtime (24 hours)
 #SBATCH -o logs/%x_%j.out        # STDOUT (%x=jobname, %j=jobid)
 #SBATCH -e logs/%x_%j.err        # STDERR
 #SBATCH --hint=multithread       # (optional) allow hyperthreading for dataloaders

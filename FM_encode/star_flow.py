@@ -96,11 +96,11 @@ if __name__ == "__main__":
     
     config={
         'models': ['IllustrisTNG'],  
-        'samples_per_model': 10,  # Number of samples to load from each model
+        'samples_per_model': 1000,  # Number of samples to load from each model
         'noise_std': 0.2,
         'architecture': 'unet',
         'max_epochs': 1000,
-        'batch_size': 4,  # Reduce batch size to fit in memory
+        'batch_size': 2,  # Reduce batch size to fit in memory
         'patience': None 
     }
     print('Configurations:',config)
