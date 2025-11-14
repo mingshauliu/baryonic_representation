@@ -265,15 +265,20 @@ class FlowMatchingModel(pl.LightningModule):
         }
         
     
-    def sample(self, cdm_mass, vcdm_map, cosmo_params, num_steps=100, method='euler'):
+    def sample(self, cdm_mass, vcdm_map, cosmo_params, num_steps=100, method='euler', noise=None):
         self.eval()
         device = next(self.parameters()).device
         batch_size = cdm_mass.size(0)
-
+        noise_std = 0.0
+        if noise_std is not None:
+            noise_std = self.noise_std
+        else:
+            noise_std = noise
+            
         x = cdm_mass
         
-        if self.noise_std>0:
-            noise = torch.randn_like(x)*self.noise_std
+        if noise_std>0:
+            noise = torch.randn_like(x)*noise_std
             x = x + noise
             del noise
             

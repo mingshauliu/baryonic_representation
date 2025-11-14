@@ -49,7 +49,7 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
     )
 
     # ckpt_path = None
-    ckpt_dir = '/mnt/home/mliu1/FMbaseline_final/lightning_logs/ymmtbzhs/checkpoints/'
+    ckpt_dir = '/mnt/home/mliu1/FMbaseline_final2/lightning_logs/o6p5mo2p/checkpoints/'
     if os.path.isdir(ckpt_dir):
         ckpts = [f for f in os.listdir(ckpt_dir) if f.endswith('.ckpt')]
         if ckpts:
@@ -58,7 +58,7 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
         else:
             print("No checkpoint found. Training from scratch.")
 
-    
+
     logger = WandbLogger(log_model="False")
     
     trainer = pl.Trainer(

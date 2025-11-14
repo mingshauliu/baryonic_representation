@@ -12,8 +12,8 @@ def _to_tensor(x, dtype=torch.float32):
 
 # --- setup ---
 base_dir = '/mnt/ceph/users/camels/PUBLIC_RELEASE/CMD/3D_grids/data'
-model_name, dataset = 'Astrid', 'LH'
-checkpoint_path = '/mnt/home/mliu1/FMbaseline128/lightning_logs/73eu1ath/checkpoints/best-model-epoch=201-val_loss=0.122905.ckpt'
+model_name, dataset = 'IllustrisTNG', 'LH'
+checkpoint_path = '/mnt/home/mliu1/FMbaseline_final/lightning_logs/kzcdk2ei/checkpoints/best-model-epoch=266-val_loss=0.026007.ckpt'
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
