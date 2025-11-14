@@ -95,7 +95,7 @@ if __name__ == "__main__":
     np.random.seed(42)
     
     config={
-        'models': ['IllustrisTNG'],  
+        'models': ['IllustrisTNG', 'SIMBA', 'Astrid'],  
         'samples_per_model': 1000,  # Number of samples to load from each model
         'noise_std': 0.2,
         'architecture': 'unet',
@@ -117,12 +117,15 @@ if __name__ == "__main__":
             
         print(f"Loading data from {model_name} {dataset} set...")
 
-        base_dir = '/mnt/ceph/users/camels/PUBLIC_RELEASE/CMD/3D_grids/data'
+        if model_name == 'EAGLE':
+            base_dir = '/mnt/home/mliu1/CAMELS-cube'
+        else:
+            base_dir = f'/mnt/ceph/users/camels/PUBLIC_RELEASE/CMD/3D_grids/data/{model_name}'
 
-        cdm_mass = np.load(f'{base_dir}/{model_name}/Grids_Mcdm_{model_name}_{dataset}_128_z=0.0.npy',mmap_mode='r')
-        gas_maps = np.load(f'{base_dir}/{model_name}/Grids_Mgas_{model_name}_{dataset}_128_z=0.0.npy',mmap_mode='r')
-        vcdm_maps = np.load(f'{base_dir}/{model_name}/Grids_Vcdm_{model_name}_{dataset}_128_z=0.0.npy',mmap_mode='r')
-        params = np.loadtxt(f'{base_dir}/{model_name}/params_{dataset}_{model_name}.txt')[:,:2] # Cosmological constants only: Omega_m, sigma_8
+        cdm_mass = np.load(f'{base_dir}/Grids_Mcdm_{model_name}_{dataset}_128_z=0.0.npy',mmap_mode='r')
+        gas_maps = np.load(f'{base_dir}/Grids_Mgas_{model_name}_{dataset}_128_z=0.0.npy',mmap_mode='r')
+        vcdm_maps = np.load(f'{base_dir}/Grids_Vcdm_{model_name}_{dataset}_128_z=0.0.npy',mmap_mode='r')
+        params = np.loadtxt(f'{base_dir}/params_{dataset}_{model_name}.txt')[:,:2] # Cosmological constants only: Omega_m, sigma_8
         
         n_samples = min(config['samples_per_model'], len(cdm_mass))
         if len(cdm_mass) > n_samples:
