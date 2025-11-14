@@ -1,0 +1,11 @@
+{"time":"2025-11-14T16:53:14.692221158-05:00","level":"INFO","msg":"stream: starting","core version":"0.22.1"}
+{"time":"2025-11-14T16:53:14.873401162-05:00","level":"INFO","msg":"stream: created new stream","id":"msmjaweb"}
+{"time":"2025-11-14T16:53:14.873629096-05:00","level":"INFO","msg":"handler: started","stream_id":"msmjaweb"}
+{"time":"2025-11-14T16:53:14.875986718-05:00","level":"INFO","msg":"stream: started","id":"msmjaweb"}
+{"time":"2025-11-14T16:53:14.876795205-05:00","level":"INFO","msg":"writer: started","stream_id":"msmjaweb"}
+{"time":"2025-11-14T16:53:14.876865899-05:00","level":"INFO","msg":"sender: started","stream_id":"msmjaweb"}
+{"time":"2025-11-14T16:53:17.198683839-05:00","level":"INFO","msg":"stream: closing","id":"msmjaweb"}
+{"time":"2025-11-14T16:53:17.799083208-05:00","level":"INFO","msg":"fileTransfer: Close: file transfer manager closed"}
+{"time":"2025-11-14T16:53:17.947841291-05:00","level":"INFO","msg":"handler: closed","stream_id":"msmjaweb"}
+{"time":"2025-11-14T16:53:17.950080035-05:00","level":"INFO","msg":"sender: closed","stream_id":"msmjaweb"}
+{"time":"2025-11-14T16:53:17.950093902-05:00","level":"INFO","msg":"stream: closed","id":"msmjaweb"}
