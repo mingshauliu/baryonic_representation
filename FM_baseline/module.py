@@ -27,30 +27,25 @@ def _xcorr_metric(delta1, delta2):
     xpk_cut = xpk[mask]
     return np.trapz(xpk_cut, k_cut) / (k_cut.max() - k_cut.min())
 
-# class RandomRotate90_3D:
-#     """Rotate a 3D volume by a random multiple of 90° around a random axis."""
-#     def __init__(self, dims=(1,2,3)): 
-#         self.dims = dims
-
-#     def __call__(self, x):
-#         k = random.randint(0, 3)
-#         axis_pairs = [(1,2), (2,3), (1,3)]
-#         axes = random.choice(axis_pairs)
-#         return torch.rot90(x, k, axes)
     
-class RandomRotate90_3D:
-    """Rotate a 3D volume by a random multiple of 90° around a random axis."""
-    def __init__(self, dims=(1,2,3)): 
+class RandomRotateFlip3D:
+    """Randomly rotate by 90° around a random axis and randomly flip along spatial axes."""
+    def __init__(self, dims=(1,2,3)):
         self.dims = dims
         self.axis_pairs = [(1,2), (2,3), (1,3)]
 
     def __call__(self, *tensors):
-        """Apply same random rotation to all input tensors"""
+        # --- Random rotation ---
         k = torch.randint(0, 4, (1,)).item()
         axes = self.axis_pairs[torch.randint(0, len(self.axis_pairs), (1,)).item()]
+        tensors = tuple(torch.rot90(t, k, axes) for t in tensors)
         
-        # Apply to all tensors
-        return tuple(torch.rot90(t, k, axes) for t in tensors)
+        # --- Random flip along each dimension ---
+        for dim in self.dims:
+            if torch.rand(1).item() < 0.5:  # 50% chance per axis
+                tensors = tuple(torch.flip(t, [dim]) for t in tensors)
+
+        return tensors
 
 class AstroFlowMatchingDataModule(pl.LightningDataModule):
     """flow matching data pairs"""
@@ -72,7 +67,7 @@ class AstroFlowMatchingDataModule(pl.LightningDataModule):
         self.batch_size = batch_size
         self.val_split = val_split
         self.num_workers = num_workers
-        self.train_transform = RandomRotate90_3D()
+        self.train_transform = RandomRotateFlip3D()
         
     def setup(self, stage: Optional[str] = None):
         # Split data
@@ -149,7 +144,7 @@ class FlowMatchingModel(pl.LightningModule):
         self.learning_rate = learning_rate
         self.alpha = alpha
         self.noise_std = noise_std
-        self.scalar_field = UNetScalarField(in_channels=3, base_channels=128, out_channels=1)
+        self.scalar_field = UNetScalarField(in_channels=3, base_channels=256, out_channels=1)
         # self.resnet_branch = ResNetBranch(in_channels=2, embedding_dim=8)
         
         if hasattr(self.scalar_field, 'enable_gradient_checkpointing'):
@@ -165,6 +160,26 @@ class FlowMatchingModel(pl.LightningModule):
     
     def forward(self, x, t, params):
         return self.scalar_field(x, t, params)
+    
+    def integrate(self, cdm, vcdm, params, num_steps=50):
+        """Integrate the flow from t=0 to t=1 using Euler method"""
+        device = cdm.device
+        batch_size = cdm.size(0)
+        dt = torch.tensor(1.0 / num_steps, dtype=torch.float32, device=device)
+        
+        x = cdm.clone()
+        if self.noise_std>0:
+            noise = torch.randn_like(x)*self.noise_std
+            x = x + noise
+            del noise
+            
+        for i in range(num_steps):
+            tt = torch.full((batch_size,), i * dt, device=device, dtype=torch.float32)
+            input_field = torch.cat([x, cdm, vcdm], dim=1)  # Shape: (batch, 3, D, H, W)
+            field_change = self(input_field, tt, params)  # Predict scalar field
+            x = x + dt * field_change  # Euler update
+
+        return x
     
     def training_step(self, batch, batch_idx):
 
@@ -231,22 +246,21 @@ class FlowMatchingModel(pl.LightningModule):
         if self.trainer.sanity_checking:
             return loss
         else:
-            if (self.current_epoch % 5 == 0) and (batch_idx == 0):
+            if (self.current_epoch % 20 == 0) and (batch_idx == 0):
                 # compute xcorr only once per 5 epochs on the first batch
                 with torch.no_grad():
-                    num_steps = 50
-                    dt = torch.tensor(1.0 / num_steps, dtype=torch.float32, device=device)
-                    x = cdm_mass.clone()
-                    for i in range(num_steps):
-                        tt = torch.full((batch_size,), i * dt, device=device, dtype=torch.float32)
-                        input_field = torch.cat([x, cdm_mass, vcdm_map], dim=1)  # Shape: (batch, 3, D, H, W)
-                        field_change = self(input_field, tt, params)
-                        x = x + dt * field_change
 
+                    x = self.integrate(cdm_mass, vcdm_map, params, num_steps=50)
+                    
+                    target_np = target_maps[0, 0].detach().cpu().numpy()
+                    np.save(f'sample/epoch{self.current_epoch}_target.npy', target_np)
+                    field_np = x[0, 0].detach().cpu().numpy()
+                    np.save(f'sample/epoch{self.current_epoch}_sample.npy', field_np)
                     xcorr_val = _xcorr_metric(
-                        x[0, 0].detach().cpu().numpy(),
-                        target_maps[0, 0].detach().cpu().numpy()
+                        field_np,
+                        target_np
                     )
+                    
                     self.log("xcorr", xcorr_val, prog_bar=True, on_step=False, on_epoch=True)
 
             del predicted_velocity, target_velocity, x_t
@@ -275,23 +289,7 @@ class FlowMatchingModel(pl.LightningModule):
         else:
             noise_std = noise
             
-        x = cdm_mass
-        
-        if noise_std>0:
-            noise = torch.randn_like(x)*noise_std
-            x = x + noise
-            del noise
-            
-        dt = torch.tensor(1.0 / num_steps, dtype=torch.float32, device=device)
-
         with torch.no_grad():
-            for i in range(num_steps):
-                t = torch.full((batch_size,), i * dt, device=device, dtype=torch.float32)
-                input_field = torch.cat([x, cdm_mass, vcdm_map], dim=1)  
-                field_change = self(input_field, t, cosmo_params)  
-                if method == 'euler':
-                    x = x + dt * field_change
-                else:
-                    raise ValueError("Only 'euler' method implemented")
+            x = self.integrate(cdm_mass, vcdm_map, cosmo_params, num_steps=num_steps)
 
         return x

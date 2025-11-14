@@ -49,14 +49,14 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
     )
 
     # ckpt_path = None
-    ckpt_dir = '/mnt/home/mliu1/FMbaseline_final2/lightning_logs/o6p5mo2p/checkpoints/'
-    if os.path.isdir(ckpt_dir):
-        ckpts = [f for f in os.listdir(ckpt_dir) if f.endswith('.ckpt')]
-        if ckpts:
-            ckpt_path = os.path.join(ckpt_dir, sorted(ckpts)[-1])  # load latest checkpoint
-            print(f"Resuming from checkpoint: {ckpt_path}")
-        else:
-            print("No checkpoint found. Training from scratch.")
+    # ckpt_dir = '/mnt/home/mliu1/FMbaseline_final/lightning_logs/ymmtbzhs/checkpoints/'
+    # if os.path.isdir(ckpt_dir):
+    #     ckpts = [f for f in os.listdir(ckpt_dir) if f.endswith('.ckpt')]
+    #     if ckpts:
+    #         ckpt_path = os.path.join(ckpt_dir, sorted(ckpts)[-1])  # load latest checkpoint
+    #         print(f"Resuming from checkpoint: {ckpt_path}")
+    #     else:
+    #         print("No checkpoint found. Training from scratch.")
 
 
     logger = WandbLogger(log_model="False")
@@ -83,8 +83,8 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
         num_sanity_val_steps=2  
     )
     
-    trainer.fit(model, data_module, ckpt_path=ckpt_path)
-    # trainer.fit(model, data_module)
+    # trainer.fit(model, data_module, ckpt_path=ckpt_path)
+    trainer.fit(model, data_module)
     
     print(f"Best model saved at: {checkpoint.best_model_path}")
     

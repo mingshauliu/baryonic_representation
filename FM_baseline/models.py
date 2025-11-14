@@ -89,27 +89,17 @@ class UNetScalarField(nn.Module):
             nn.SiLU(),
             nn.Linear(time_hidden_dim, 32)
         )
+        
+        self.time_encoder = nn.Sequential(
+            nn.Linear(1, 64),
+            nn.SiLU(),
+            nn.Linear(64, 32)
+        )
 
         self.param_encoder = nn.Sequential(
             nn.Linear(6, 64),
             nn.SiLU(),
             nn.Linear(64, 32)
-        )
-        
-        self.dm_encoder = nn.Sequential(
-            nn.Conv3d(1, base_channels//4, 3, padding=1), 
-            nn.SiLU(),
-            nn.AdaptiveAvgPool3d(1),
-            nn.Flatten(),
-            nn.Linear(base_channels//4, 32)
-        )
-        
-        self.vdm_encoder = nn.Sequential(
-            nn.Conv3d(1, base_channels//4, 3, padding=1), 
-            nn.SiLU(),
-            nn.AdaptiveAvgPool3d(1),
-            nn.Flatten(),
-            nn.Linear(base_channels//4, 32)
         )
 
         condition_dim = 32 + 32  # time + parameter
@@ -139,8 +129,10 @@ class UNetScalarField(nn.Module):
 
     def forward(self, x, t, params):
         
-        time_embed = sinusoidal_time_embedding(t, self.time_embed_dim)
-        time_embed = self.time_mlp(time_embed)
+        # time_embed = sinusoidal_time_embedding(t, self.time_embed_dim)
+        # time_embed = self.time_mlp(time_embed)
+        
+        time_embed = self.time_encoder(t.unsqueeze(-1)) 
         param_embed = self.param_encoder(params)
         combined_embed = torch.cat([time_embed, param_embed], dim=1)
         combined_embed = self.condition_mlp(combined_embed)
