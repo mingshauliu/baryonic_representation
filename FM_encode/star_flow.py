@@ -96,7 +96,7 @@ if __name__ == "__main__":
     
     config={
         'models': ['IllustrisTNG', 'SIMBA', 'Astrid', 'EAGLE'],  # List of models to include
-        'samples_per_model': 1000,  # Number of samples to load from each model
+        'samples_per_model': 800,  # Number of samples to load from each model
         'noise_std': 0.2,
         'architecture': 'unet',
         'max_epochs': 1000,
