@@ -95,7 +95,7 @@ if __name__ == "__main__":
     np.random.seed(42)
     
     config={
-        'models': ['IllustrisTNG', 'SIMBA', 'Astrid'],  
+        'models': ['IllustrisTNG', 'SIMBA', 'Astrid', 'EAGLE'],  # List of models to include
         'samples_per_model': 1000,  # Number of samples to load from each model
         'noise_std': 0.2,
         'architecture': 'unet',
@@ -118,7 +118,7 @@ if __name__ == "__main__":
         print(f"Loading data from {model_name} {dataset} set...")
 
         if model_name == 'EAGLE':
-            base_dir = '/mnt/home/mliu1/CAMELS-cube'
+            base_dir = '/mnt/home/mliu1/CAMELS-cube' # EAGLE-Swift is handmade
         else:
             base_dir = f'/mnt/ceph/users/camels/PUBLIC_RELEASE/CMD/3D_grids/data/{model_name}'
 
@@ -141,6 +141,7 @@ if __name__ == "__main__":
         # Apply log1p transformation
         cdm_mass = np.log1p(cdm_mass)
         gas_maps = np.log1p(gas_maps)
+        # Vcdm DOES NOT NEED LOG TRANSFORM
         # vcdm_maps = np.log1p(vcdm_maps)
         
         all_cdm_mass_maps.append(cdm_mass)
