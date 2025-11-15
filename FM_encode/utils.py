@@ -38,8 +38,8 @@ class AstroMapDataset(Dataset):
         vcdm_map = self.vcdm_maps[idx].unsqueeze(0)
         cosmo_param = self.params[idx]
         
-        if self.transform is not None:
-            # Apply same transformation to all tensors at once
-            total_mass, target_map, vcdm_map = self.transform(total_mass, target_map, vcdm_map)
+        # if self.transform is not None:
+        #     # Apply same transformation to all tensors at once
+        #     total_mass, target_map, vcdm_map = self.transform(total_mass, target_map, vcdm_map)
         
         return total_mass, target_map, vcdm_map, cosmo_param

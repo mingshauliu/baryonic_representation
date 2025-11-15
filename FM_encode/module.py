@@ -29,23 +29,30 @@ def _xcorr_metric(delta1, delta2):
 
  
 class RandomRotateFlip3D:
-    """Randomly rotate by 90° around a random axis and randomly flip along spatial axes."""
-    def __init__(self, dims=(1,2,3)):
+    """Apply random 90° rotation + random flips along chosen dims.
+       Works on both CPU and GPU tensors.
+    """
+    def __init__(self, dims=(2,3,4)):
+        # dims correspond to spatial dims for 5D tensors: (B,C,D,H,W)
         self.dims = dims
-        self.axis_pairs = [(1,2), (2,3), (1,3)]
+        self.axis_pairs = [(2,3), (3,4), (2,4)]
 
     def __call__(self, *tensors):
-        # --- Random rotation ---
+        # tensors are already on CPU or GPU depending on where __call__ is executed
+        
+        # ---- Random rotation ----
         k = torch.randint(0, 4, (1,)).item()
         axes = self.axis_pairs[torch.randint(0, len(self.axis_pairs), (1,)).item()]
+
         tensors = tuple(torch.rot90(t, k, axes) for t in tensors)
-        
-        # --- Random flip along each dimension ---
+
+        # ---- Random flips ----
         for dim in self.dims:
-            if torch.rand(1).item() < 0.5:  # 50% chance per axis
+            if torch.rand(1).item() < 0.5:
                 tensors = tuple(torch.flip(t, [dim]) for t in tensors)
 
         return tensors
+
 
 class AstroFlowMatchingDataModule(pl.LightningDataModule):
     """flow matching data pairs"""
@@ -96,14 +103,14 @@ class AstroFlowMatchingDataModule(pl.LightningDataModule):
             train_gas_maps,
             train_vcdm_maps,
             params=train_cosmo_params,
-            transform=self.train_transform,
+            # transform=self.train_transform,
         )
         self.val_dataset = AstroMapDataset(
             val_cdm_mass,
             val_gas_maps,   
             val_vcdm_maps,
             params=val_cosmo_params,
-            transform=None,
+            # transform=None,
         )
         
     def train_dataloader(self):
@@ -144,8 +151,9 @@ class FlowMatchingModel(pl.LightningModule):
         self.learning_rate = learning_rate
         self.beta = beta
         self.noise_std = noise_std
-        self.scalar_field = UNetScalarField(in_channels=3, base_channels=256, out_channels=1)
+        self.scalar_field = UNetScalarField(in_channels=3, base_channels=128, out_channels=1)
         self.resnet_branch = ResNetBranch(in_channels=1, embedding_dim=16)
+        self.train_transform = RandomRotateFlip3D()
         
         if hasattr(self.scalar_field, 'enable_gradient_checkpointing'):
             self.scalar_field.enable_gradient_checkpointing()
@@ -187,6 +195,15 @@ class FlowMatchingModel(pl.LightningModule):
 
         batch_size = cdm_mass.size(0)
         device = cdm_mass.device
+        
+        cdm_mass = cdm_mass.to(device)
+        target_maps = target_maps.to(device)
+        vcdm_maps = vcdm_maps.to(device)
+        params = params.to(device)
+
+        # ---- APPLY GPU AUGMENTATION ----
+        if self.trainer.training:  # only train, not val
+            cdm_mass, target_maps, vcdm_maps = self.train_transform(cdm_mass, target_maps, vcdm_maps)
         
         t = self.sample_time(batch_size, device)
         x0 = cdm_mass
@@ -270,7 +287,7 @@ class FlowMatchingModel(pl.LightningModule):
                 # compute xcorr only once per 5 epochs on the first batch
                 with torch.no_grad():
 
-                    x = self.integrate(cdm_mass, vcdm_map, params, embed, num_steps=50)
+                    x = self.integrate(cdm_mass, vcdm_map, params, embed, num_steps=100)
                     
                     target_np = target_maps[0, 0].detach().cpu().numpy()
                     np.save(f'sample/epoch{self.current_epoch}_target.npy', target_np)

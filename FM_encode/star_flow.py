@@ -24,7 +24,7 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
         cosmo_params=cosmo_params,
         batch_size=batch_size,
         val_split=0.2,
-        num_workers=2
+        num_workers=6
     )
     
     model = FlowMatchingModel(
@@ -70,7 +70,7 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
         precision='16-mixed',
         gradient_clip_val=1.0,
         accumulate_grad_batches=4,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=5,
         log_every_n_steps=50,
         callbacks=[checkpoint, lr_cb],
         enable_progress_bar=True,
@@ -80,7 +80,7 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
         use_distributed_sampler=False,
         limit_train_batches=1.0,
         limit_val_batches=1.0,  
-        num_sanity_val_steps=2  
+        num_sanity_val_steps=2,
     )
     
     # trainer.fit(model, data_module, ckpt_path=ckpt_path)
@@ -96,11 +96,11 @@ if __name__ == "__main__":
     
     config={
         'models': ['IllustrisTNG', 'SIMBA', 'Astrid', 'EAGLE'],  # List of models to include
-        'samples_per_model': 800,  # Number of samples to load from each model
+        'samples_per_model': 1000,  # Number of samples to load from each model
         'noise_std': 0.2,
         'architecture': 'unet',
         'max_epochs': 1000,
-        'batch_size': 2,  # Reduce batch size to fit in memory
+        'batch_size': 4,  # Reduce batch size to fit in memory
         'patience': None 
     }
     print('Configurations:',config)

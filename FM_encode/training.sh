@@ -3,7 +3,7 @@
 #SBATCH -p gpu                   # GPU partition
 #SBATCH -N 1                     # Run on a single node
 #SBATCH --gres=gpu:1             # Request 2 GPUs
-#SBATCH --constraint=a100-80gb 
+#SBATCH --constraint=h100-80gb 
 #SBATCH --cpus-per-task=8        # 8 CPU cores (for data loading, etc.)
 #SBATCH --mem=480G               # Total memory available to the job
 #SBATCH -t 3-00:00               # Max runtime (24 hours)
