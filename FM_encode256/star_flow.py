@@ -71,7 +71,7 @@ def train_flow_matching_model(cdm_mass_maps, gas_maps, vcdm_maps, cosmo_params,
         gradient_clip_val=1.0,
         accumulate_grad_batches=4,
         check_val_every_n_epoch=1,
-        log_every_n_steps=50,
+        log_every_n_steps=100,
         callbacks=[checkpoint, lr_cb],
         enable_progress_bar=True,
         enable_model_summary=True,
@@ -100,7 +100,7 @@ if __name__ == "__main__":
         'noise_std': 0.2,
         'architecture': 'unet',
         'max_epochs': 1000,
-        'batch_size': 4,  # Reduce batch size to fit in memory
+        'batch_size': 2,  # Reduce batch size to fit in memory
         'patience': None 
     }
     print('Configurations:',config)
