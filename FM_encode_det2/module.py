@@ -152,7 +152,7 @@ class FlowMatchingModel(pl.LightningModule):
         self.beta = beta
         self.noise_std = noise_std
         self.scalar_field = UNetScalarField(in_channels=3, base_channels=128, out_channels=1)
-        self.resnet_branch = ResNetBranch(in_channels=1, embedding_dim=16)
+        self.resnet_branch = ResNetBranch(in_channels=1, embedding_dim=8)
         self.train_transform = RandomRotateFlip3D()
         
         if hasattr(self.scalar_field, 'enable_gradient_checkpointing'):
@@ -223,20 +223,14 @@ class FlowMatchingModel(pl.LightningModule):
         del x0, x1
 
         # Compute ResNet embedding here (maintains same training behavior)
-        resnet_embed = self.resnet_branch(target_maps)  # Shape: (batch, 8)
-        embed_mean = resnet_embed[:, :8]
-        embed_log_std = resnet_embed[:, 8:]  # Directly use log std for numerical stability
-        eps = torch.randn_like(embed_mean)
-        embed = embed_mean + torch.exp(embed_log_std) * eps
+        embed = self.resnet_branch(target_maps)  # Shape: (batch, 8)
         
         input_field = torch.cat([x_t, cdm_mass, vcdm_maps], dim=1)  # Shape: (batch, 3, D, H, W)
         
         # Predict scalar field
         predicted_velocity = self(input_field, t, params, embed)
-        kl_loss = 0.5 * (torch.exp(2*embed_log_std) + embed_mean**2 - 1 - 2*embed_log_std).mean()
-        loss = F.mse_loss(predicted_velocity, target_velocity) + self.beta * kl_loss
+        loss = F.mse_loss(predicted_velocity, target_velocity)
                 
-        self.log('train_kl_loss', kl_loss, on_step=False, on_epoch=True)                
         self.log('train_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
         del predicted_velocity, target_velocity, x_t
         
@@ -263,21 +257,15 @@ class FlowMatchingModel(pl.LightningModule):
         x_t = (1 - t_expanded) * x0 + t_expanded * x1
         
         # Compute ResNet embedding here (maintains same training behavior)
-        resnet_embed = self.resnet_branch(target_maps)  # Shape: (batch, 8)
-        embed_mean = resnet_embed[:, :8]
-        embed_log_std = resnet_embed[:, 8:]  # Directly use log std for numerical stability
-        eps = torch.randn_like(embed_mean)
-        embed = embed_mean + torch.exp(embed_log_std) * eps
+        embed = self.resnet_branch(target_maps)  # Shape: (batch, 8)
         
         input_field = torch.cat([x_t, cdm_mass, vcdm_map], dim=1)  # Shape: (batch, 3, D, H, W)
         target_velocity = x1 - x0
         
         # Predict scalar field
         predicted_velocity = self(input_field, t, params, embed)
-        kl_loss = 0.5 * (torch.exp(2*embed_log_std) + embed_mean**2 - 1 - 2*embed_log_std).mean()
-        loss = F.mse_loss(predicted_velocity, target_velocity) + self.beta * kl_loss
+        loss = F.mse_loss(predicted_velocity, target_velocity) 
                 
-        self.log('val_kl_loss', kl_loss, on_step=False, on_epoch=True)                
         self.log('val_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
         
         if self.trainer.sanity_checking:
@@ -325,12 +313,7 @@ class FlowMatchingModel(pl.LightningModule):
 
         if embed is None:
             if resnet_input is not None:
-                embed = self.resnet_branch(resnet_input)
-                embed_mean = embed[:, :8]
-                embed_std  = F.softplus(embed[:, 8:])  # ensure std > 0
-                
-                eps = torch.randn_like(embed_mean)
-                zbar = embed_mean + embed_std * eps
+                zbar = self.resnet_branch(resnet_input)
             else: 
                 print("Missing ResNet inputs")
                 return None
