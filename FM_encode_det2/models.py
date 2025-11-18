@@ -14,6 +14,40 @@ class FiLMLayer(nn.Module):
         scale = scale.reshape(-1, features.size(1), 1, 1, 1)
         shift = shift.reshape(-1, features.size(1), 1, 1, 1)
         return features * (1 + scale) + shift
+    
+class DensityGatedFiLM(nn.Module):
+    """FiLM with density-based gating"""
+    def __init__(self, condition_dim, feature_dim):
+        super().__init__()
+        self.linear = nn.Linear(condition_dim, feature_dim * 2)
+        
+        # Learn to extract "importance map" from features
+        self.gate_net = nn.Sequential(
+            nn.Conv3d(feature_dim, feature_dim // 4, 3, padding=1),
+            nn.SiLU(),
+            nn.Conv3d(feature_dim // 4, 1, 1),
+            nn.Sigmoid()  # Gate values in [0, 1]
+        )
+    
+    def forward(self, features, condition_embed):
+        B, C, D, H, W = features.shape
+        
+        # Global modulation (as before)
+        scale_shift = self.linear(condition_embed)
+        scale, shift = scale_shift.chunk(2, dim=1)
+        scale = scale.reshape(B, C, 1, 1, 1)
+        shift = shift.reshape(B, C, 1, 1, 1)
+        
+        # Compute spatial gate from features themselves
+        # (learns to identify important regions)
+        gate = self.gate_net(features)  # (B, 1, D, H, W)
+        
+        # Apply modulation with spatial gating
+        # High gate → strong modulation, Low gate → weak modulation
+        modulated = features * (1 + scale * gate) + shift * gate
+        
+        # Residual: preserve some of original features
+        return 0.9 * modulated + 0.1 * features
 
 def sinusoidal_time_embedding(timesteps, dim, max_period=10000):
     device = timesteps.device
@@ -137,9 +171,9 @@ class UNetBlock(nn.Module):
         self.act = nn.SiLU()
 
         self.conv1 = nn.Conv3d(in_channels, out_channels, 3, padding=1)
-        self.film1 = FiLMLayer(condition_dim, out_channels)
+        self.film1 = DensityGatedFiLM(condition_dim, out_channels)
         self.conv2 = nn.Conv3d(out_channels, out_channels, 3, padding=1)
-        self.film2 = FiLMLayer(condition_dim, out_channels)
+        self.film2 = DensityGatedFiLM(condition_dim, out_channels)
 
         self.residual_conv = None
         if in_channels != out_channels:
@@ -253,7 +287,7 @@ class UNetScalarField(nn.Module):
             nn.SiLU(),
             nn.Conv3d(base_channels*2, base_channels*2, 3, padding=1)
         )
-        self.bottleneck_film = FiLMLayer(condition_dim, base_channels*2)
+        self.bottleneck_film = DensityGatedFiLM(condition_dim, base_channels*2)
         
         self.dec3 = UNetBlock(base_channels*2 + base_channels*2, base_channels*2, condition_dim, down=False) 
         self.dec2 = UNetBlock(base_channels + base_channels, base_channels, condition_dim, down=False)     
