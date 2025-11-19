@@ -271,7 +271,7 @@ class FlowMatchingModel(pl.LightningModule):
         if self.trainer.sanity_checking:
             return loss
         else:
-            if (self.current_epoch % 10 == 0) and (batch_idx == 0):
+            if (self.current_epoch % 20 == 0) and (batch_idx == 0):
                 # compute xcorr only once per 5 epochs on the first batch
                 with torch.no_grad():
 

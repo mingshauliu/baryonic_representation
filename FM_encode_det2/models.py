@@ -14,40 +14,6 @@ class FiLMLayer(nn.Module):
         scale = scale.reshape(-1, features.size(1), 1, 1, 1)
         shift = shift.reshape(-1, features.size(1), 1, 1, 1)
         return features * (1 + scale) + shift
-    
-class DensityGatedFiLM(nn.Module):
-    """FiLM with density-based gating"""
-    def __init__(self, condition_dim, feature_dim):
-        super().__init__()
-        self.linear = nn.Linear(condition_dim, feature_dim * 2)
-        
-        # Learn to extract "importance map" from features
-        self.gate_net = nn.Sequential(
-            nn.Conv3d(feature_dim, feature_dim // 4, 3, padding=1),
-            nn.SiLU(),
-            nn.Conv3d(feature_dim // 4, 1, 1),
-            nn.Sigmoid()  # Gate values in [0, 1]
-        )
-    
-    def forward(self, features, condition_embed):
-        B, C, D, H, W = features.shape
-        
-        # Global modulation (as before)
-        scale_shift = self.linear(condition_embed)
-        scale, shift = scale_shift.chunk(2, dim=1)
-        scale = scale.reshape(B, C, 1, 1, 1)
-        shift = shift.reshape(B, C, 1, 1, 1)
-        
-        # Compute spatial gate from features themselves
-        # (learns to identify important regions)
-        gate = self.gate_net(features)  # (B, 1, D, H, W)
-        
-        # Apply modulation with spatial gating
-        # High gate → strong modulation, Low gate → weak modulation
-        modulated = features * (1 + scale * gate) + shift * gate
-        
-        # Residual: preserve some of original features
-        return 0.9 * modulated + 0.1 * features
 
 def sinusoidal_time_embedding(timesteps, dim, max_period=10000):
     device = timesteps.device
@@ -84,17 +50,17 @@ class ResNetBlock(nn.Module):
         self.gn1 = _make_gn(in_channels, groups)
         self.act1 = nn.SiLU()
         self.conv1 = nn.Conv3d(in_channels, out_channels, kernel_size=3,
-                               stride=stride, padding=1, bias=False)
+                               stride=stride, padding=1, bias=False, padding_mode='circular')
 
         self.gn2 = _make_gn(out_channels, groups)
         self.act2 = nn.SiLU()
         self.conv2 = nn.Conv3d(out_channels, out_channels, kernel_size=3,
-                               stride=1, padding=1, bias=False)
+                               stride=1, padding=1, bias=False, padding_mode='circular')
 
         # Shortcut for downsample or channel change
         if stride != 1 or in_channels != out_channels:
             self.shortcut = nn.Conv3d(in_channels, out_channels, kernel_size=1,
-                                      stride=stride, bias=False)
+                                      stride=stride, bias=False, padding_mode='circular')
         else:
             self.shortcut = nn.Identity()
 
@@ -123,7 +89,7 @@ class ResNetBranch(nn.Module):
         self.groups = groups
 
         # Stem
-        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False)
+        self.conv1 = nn.Conv3d(in_channels, 64, kernel_size=7, stride=2, padding=3, bias=False, padding_mode='circular')
         self.gn1 = _make_gn(64, groups)
         self.act1 = nn.SiLU()
         self.maxpool = nn.MaxPool3d(kernel_size=3, stride=2, padding=1)
@@ -162,28 +128,26 @@ class ResNetBranch(nn.Module):
         return x
 
 class UNetBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, condition_dim=128, down=True):
+    def __init__(self, in_channels, out_channels, condition_dim=128, down=True, groups=8):
         super().__init__()
         self.down = down
 
-        self.norm1 = nn.GroupNorm(min(32, in_channels), in_channels)
-        self.norm2 = nn.GroupNorm(min(32, in_channels), out_channels)
+        self.norm1 = _make_gn(in_channels, groups)
+        self.norm2 = _make_gn(out_channels, groups)
+        
         self.act = nn.SiLU()
 
-        self.conv1 = nn.Conv3d(in_channels, out_channels, 3, padding=1)
-        self.film1 = DensityGatedFiLM(condition_dim, out_channels)
-        self.conv2 = nn.Conv3d(out_channels, out_channels, 3, padding=1)
-        self.film2 = DensityGatedFiLM(condition_dim, out_channels)
+        self.conv1 = nn.Conv3d(in_channels, out_channels, 3, padding=1, padding_mode='circular')
+        self.film1 = FiLMLayer(condition_dim, out_channels)
+        self.conv2 = nn.Conv3d(out_channels, out_channels, 3, padding=1, padding_mode='circular')
+        self.film2 = FiLMLayer(condition_dim, out_channels)
 
         self.residual_conv = None
         if in_channels != out_channels:
-            self.residual_conv = nn.Conv3d(in_channels, out_channels, 1)
+            self.residual_conv = nn.Conv3d(in_channels, out_channels, 1, padding_mode='circular')
 
         if self.down:
-            self.pool = nn.Sequential(
-                nn.Conv3d(out_channels, out_channels, 3, padding=1),  # Blur
-                nn.AvgPool3d(2)  # Then downsample
-            )
+            self.downsample = nn.Conv3d(out_channels, out_channels, 3, stride=2, padding=1, padding_mode='circular')
 
     def forward(self, x, condition_embed):
         residual = x
@@ -201,36 +165,27 @@ class UNetBlock(nn.Module):
         h = self.film2(h, condition_embed)
 
         h = h + residual
-        h = self.act(h)
+        # h = self.act(h)
 
         if self.down:
-            return h, self.pool(h)
+            return h, self.downsample(h)
         else:
             return h
 
+def upsample_block(in_ch, out_ch):
+    return nn.Sequential(
+        nn.Upsample(scale_factor=2, mode='nearest'),
+        nn.Conv3d(in_ch, out_ch, 3, padding=1, padding_mode='circular')
+    )
+
 class UNetScalarField(nn.Module):
-    def __init__(self, in_channels=3, base_channels=128, out_channels=1):
+    def __init__(self, in_channels=3, base_channels=128, out_channels=1, groups=8):
         super().__init__()
 
-        # Replace those three lines with:
-        self.upconv3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
-            nn.Conv3d(base_channels*2, base_channels*2, 3, padding=1)
-        )
-        self.upconv2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
-            nn.Conv3d(base_channels*2, base_channels, 3, padding=1)
-        )
-        self.upconv1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='trilinear', align_corners=False),
-            nn.Conv3d(base_channels, base_channels//2, 3, padding=1)
-        )
-        self.output = nn.Sequential(
-            nn.Conv3d(base_channels//2, base_channels//2, 3, padding=1),  # Smooth first
-            nn.GroupNorm(min(8, base_channels//2), base_channels//2),
-            nn.SiLU(),
-            nn.Conv3d(base_channels//2, out_channels, 1)
-        )
+        self.upconv3 = upsample_block(base_channels*2, base_channels*2)
+        self.upconv2 = upsample_block(base_channels*2, base_channels)
+        self.upconv1 = upsample_block(base_channels, base_channels//2)
+        self.output = nn.Conv3d(base_channels//2, out_channels, 1, padding_mode='circular')
 
         # self.time_embed_dim = 64
         # time_hidden_dim = 128
@@ -251,22 +206,6 @@ class UNetScalarField(nn.Module):
             nn.SiLU(),
             nn.Linear(64, 32)
         ) # Cosmological parameters only: Omega_m, sigma_8
-        
-        self.dm_encoder = nn.Sequential(
-            nn.Conv3d(1, base_channels//4, 3, padding=1), 
-            nn.SiLU(),
-            nn.AdaptiveAvgPool3d(1),
-            nn.Flatten(),
-            nn.Linear(base_channels//4, 32)
-        )
-        
-        self.vdm_encoder = nn.Sequential(
-            nn.Conv3d(1, base_channels//4, 3, padding=1), 
-            nn.SiLU(),
-            nn.AdaptiveAvgPool3d(1),
-            nn.Flatten(),
-            nn.Linear(base_channels//4, 32)
-        )
 
         condition_dim = 32 + 32 + 8 # time + parameter
         self.condition_mlp = nn.Sequential(
@@ -280,14 +219,14 @@ class UNetScalarField(nn.Module):
         self.enc3 = UNetBlock(base_channels, base_channels*2, condition_dim, down=True)
         
         self.bottleneck = nn.Sequential(
-            nn.GroupNorm(1, base_channels*2),
+            _make_gn(base_channels*2, groups),
             nn.SiLU(),
-            nn.Conv3d(base_channels*2, base_channels*2, 3, padding=1),
-            nn.GroupNorm(1, base_channels*2),
+            nn.Conv3d(base_channels*2, base_channels*2, 3, padding=1, padding_mode='circular'),
+            _make_gn(base_channels*2, groups),
             nn.SiLU(),
-            nn.Conv3d(base_channels*2, base_channels*2, 3, padding=1)
+            nn.Conv3d(base_channels*2, base_channels*2, 3, padding=1, padding_mode='circular')
         )
-        self.bottleneck_film = DensityGatedFiLM(condition_dim, base_channels*2)
+        self.bottleneck_film = FiLMLayer(condition_dim, base_channels*2)
         
         self.dec3 = UNetBlock(base_channels*2 + base_channels*2, base_channels*2, condition_dim, down=False) 
         self.dec2 = UNetBlock(base_channels + base_channels, base_channels, condition_dim, down=False)     

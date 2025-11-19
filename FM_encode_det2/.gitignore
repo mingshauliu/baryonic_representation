@@ -1,0 +1,6 @@
+__pycache__
+sample/
+wandb/
+logs/
+lightning_logs/
+.ipynb_checkpoints/
